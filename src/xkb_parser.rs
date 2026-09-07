@@ -11,7 +11,11 @@ pub struct XkbParser {
 impl XkbParser {
     pub fn new() -> Self {
         let context = Context::new(0).unwrap();
-        XkbParser{ context, keymap: None, layout: 0 }
+        XkbParser {
+            context,
+            keymap: None,
+            layout: 0,
+        }
     }
 
     // Try to load xkb keymap

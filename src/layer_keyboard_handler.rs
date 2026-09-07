@@ -106,6 +106,12 @@ impl MainLayer {
         }
     }
 
+    /// Called each time the repeat timer trigger, while the key is held.
+    pub fn handle_key_repeat(&mut self, qh: &QueueHandle<Self>, event: KeyEvent) {
+        log::trace!("Key repeat: {event:?} {}", event.raw_code);
+        self.handle_key(qh, &event);
+    }
+
     fn handle_cancel_and_confirm(&mut self, event: &KeyEvent) -> bool {
         let cancel_selection = keysym_to_lower(&self.bindings.cancel_selection);
         let selection = &mut self.selection[self.current_selection_index];
@@ -164,10 +170,76 @@ impl KeyboardHandler for MainLayer {
         _: u32,
         event: KeyEvent,
     ) {
-        let mut need_draw = false;
-
         log::trace!("Key press: {event:?} {}", event.raw_code);
-        // println!("Key press: {event:?} {}", event.raw_code);
+        self.handle_key(qh, &event);
+    }
+
+    // Required by the trait, unused here.
+    fn repeat_key(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        _event: KeyEvent,
+    ) {
+    }
+
+    // Required by the trait, unused here.
+    fn release_key(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _: u32,
+        _event: KeyEvent,
+    ) {
+    }
+
+    fn update_modifiers(
+        &mut self,
+        _: &Connection,
+        _qh: &QueueHandle<Self>,
+        _: &wl_keyboard::WlKeyboard,
+        _serial: u32,
+        modifiers: Modifiers,
+        _raw_modifiers: RawModifiers,
+        layout: u32,
+    ) {
+        self.modifiers = modifiers;
+
+        // Set the layout for the current loaded keymap
+        if let Err(error) = cache_data("layout.dat", layout.to_string()) {
+            log::error!("Can’t access cache directory: {}", error);
+        }
+        self.xkb_parser.set_layout(layout as usize);
+        self.labels = Some(Labels::rebuild(&self.xkb_parser));
+        self.need_redraw = true;
+    }
+
+    fn update_keymap(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _keyboard: &wl_keyboard::WlKeyboard,
+        keymap: smithay_client_toolkit::seat::keyboard::Keymap<'_>,
+    ) {
+        // Load the new provided xkb keymap
+        if let Err(error) = cache_data("keymap.xkb", keymap.as_string()) {
+            log::error!("Can’t access cache directory: {}", error);
+        }
+        if let Err(error) = self.xkb_parser.parse_from_string(keymap.as_string()) {
+            log::error!("Can’t parse xkb-keymap: {error}");
+            return;
+        }
+        self.labels = Some(Labels::rebuild(&self.xkb_parser));
+        self.need_redraw = true;
+    }
+}
+
+impl MainLayer {
+    fn handle_key(&mut self, qh: &QueueHandle<Self>, event: &KeyEvent) {
+        let mut need_draw = false;
 
         if !self.modifiers.ctrl {
             if !self.modifiers.shift {
@@ -180,15 +252,16 @@ impl KeyboardHandler for MainLayer {
                 let selection = &self.selection[self.current_selection_index];
                 if selection.selected_column.is_some() && selection.selected_line.is_some() {
                     // 50/51/52 = left/middle/right click, double click included.
-                    let explicit_button = if event.keysym == keysym_to_lower(&self.bindings.left_click) {
-                        Some(ClickButton::Left)
-                    } else if event.keysym == keysym_to_lower(&self.bindings.middle_click) {
-                        Some(ClickButton::Middle)
-                    } else if event.keysym == keysym_to_lower(&self.bindings.right_click) {
-                        Some(ClickButton::Right)
-                    } else {
-                        None
-                    };
+                    let explicit_button =
+                        if event.keysym == keysym_to_lower(&self.bindings.left_click) {
+                            Some(ClickButton::Left)
+                        } else if event.keysym == keysym_to_lower(&self.bindings.middle_click) {
+                            Some(ClickButton::Middle)
+                        } else if event.keysym == keysym_to_lower(&self.bindings.right_click) {
+                            Some(ClickButton::Right)
+                        } else {
+                            None
+                        };
 
                     if let Some(button) = explicit_button {
                         if self.selection.len() == 1 {
@@ -221,23 +294,25 @@ impl KeyboardHandler for MainLayer {
                 }
 
                 // Second selection enabled on first step only.
-                if self.current_selection_index == 0 && !selection.selected_line.is_none()
-                    && event.keysym == keysym_to_lower(&self.bindings.next_selection) {
-                        log::debug!("New selection");
+                if self.current_selection_index == 0
+                    && !selection.selected_line.is_none()
+                    && event.keysym == keysym_to_lower(&self.bindings.next_selection)
+                {
+                    log::debug!("New selection");
 
-                        self.selection.push(Selection {
-                            selected_column: None,
-                            selected_line: None,
-                            selected_division: None,
-                            zones: Vec::new(),
-                            output: self.current_output.clone(),
-                        });
-                        self.current_selection_index += 1;
-                        need_draw = true;
-                    }
+                    self.selection.push(Selection {
+                        selected_column: None,
+                        selected_line: None,
+                        selected_division: None,
+                        zones: Vec::new(),
+                        output: self.current_output.clone(),
+                    });
+                    self.current_selection_index += 1;
+                    need_draw = true;
+                }
 
                 // Backspace allow to cancel the last selection step
-                if self.handle_cancel_and_confirm(&event) {
+                if self.handle_cancel_and_confirm(event) {
                     need_draw = true;
                 }
 
@@ -247,7 +322,7 @@ impl KeyboardHandler for MainLayer {
                     .is_none()
                 {
                     // Column selection
-                    if self.handle_column_selection_and_confirm(&event) {
+                    if self.handle_column_selection_and_confirm(event) {
                         need_draw = true;
                     }
                 } else
@@ -257,8 +332,10 @@ impl KeyboardHandler for MainLayer {
                     .is_none()
                 {
                     // Line selection
-                    if self.handle_line_selection_and_confirm(&event) {
+                    if self.handle_line_selection_and_confirm(event) {
                         need_draw = true;
+                        // Test: try to move mouse pointer
+                        self.move_pointer_to_active_zone(qh);
                     }
                 } else
                 // Are we waiting for a division ?
@@ -267,9 +344,12 @@ impl KeyboardHandler for MainLayer {
                     .is_none()
                 {
                     // Division selection
-                    if self.handle_division_selection_and_confirm(&event, self.behavior.auto_click)
-                    {
+                    if self.handle_division_selection_and_confirm(event, self.behavior.auto_click) {
                         need_draw = true;
+                        // Test: try to move mouse pointer
+                        if !self.exit {
+                            self.move_pointer_to_active_zone(qh);
+                        }
                     }
                 } else
                 // We are waiting for a more precise zone
@@ -349,6 +429,9 @@ impl KeyboardHandler for MainLayer {
 
                         need_draw = true;
                     }
+
+                    // Test: try to move mouse pointer
+                    self.move_pointer_to_active_zone(qh);
                 }
             } else {
                 // Shift pressed !
@@ -359,81 +442,23 @@ impl KeyboardHandler for MainLayer {
                     && selection.selected_division.is_none()
                 {
                     // Division selection
-                    if self.handle_division_selection_and_confirm(&event, !self.behavior.auto_click)
+                    if self.handle_division_selection_and_confirm(event, !self.behavior.auto_click)
                     {
                         need_draw = true;
+                        // Test: try to move mouse pointer
+                        if !self.exit {
+                            self.move_pointer_to_active_zone(qh);
+                        }
                     }
                 }
             }
         } else {
             // Ctrl modifier is pressed
-            self.handle_change_display(qh, &event);
+            self.handle_change_display(qh, event);
         }
 
         if need_draw {
             self.need_redraw = true;
         }
-    }
-
-    // Required by the trait, unused here.
-    fn repeat_key(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        _keyboard: &wl_keyboard::WlKeyboard,
-        _serial: u32,
-        _event: KeyEvent,
-    ) {
-    }
-
-    // Required by the trait, unused here.
-    fn release_key(
-        &mut self,
-        _: &Connection,
-        _: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        _: u32,
-        _event: KeyEvent,
-    ) {
-    }
-
-    fn update_modifiers(
-        &mut self,
-        _: &Connection,
-        _qh: &QueueHandle<Self>,
-        _: &wl_keyboard::WlKeyboard,
-        _serial: u32,
-        modifiers: Modifiers,
-        _raw_modifiers: RawModifiers,
-        layout: u32,
-    ) {
-        self.modifiers = modifiers;
-
-        // Set the layout for the current loaded keymap
-        if let Err(error) = cache_data("layout.dat", layout.to_string()) {
-            log::error!("Can’t access cache directory: {}", error);
-        }
-        self.xkb_parser.set_layout(layout as usize);
-        self.labels = Some(Labels::rebuild(&self.xkb_parser));
-        self.need_redraw = true;
-    }
-
-    fn update_keymap(
-        &mut self,
-        _conn: &Connection,
-        _qh: &QueueHandle<Self>,
-        _keyboard: &wl_keyboard::WlKeyboard,
-        keymap: smithay_client_toolkit::seat::keyboard::Keymap<'_>,
-    ) {
-        // Load the new provided xkb keymap
-        if let Err(error) = cache_data("keymap.xkb", keymap.as_string()) {
-            log::error!("Can’t access cache directory: {}", error);
-        }
-        if let Err(error) = self.xkb_parser.parse_from_string(keymap.as_string()) {
-            log::error!("Can’t parse xkb-keymap: {error}");
-            return;
-        }
-        self.labels = Some(Labels::rebuild(&self.xkb_parser));
-        self.need_redraw = true;
     }
 }

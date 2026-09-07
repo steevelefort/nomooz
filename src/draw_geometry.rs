@@ -3,12 +3,7 @@ use crate::zone::Zone;
 
 // Quickly draw a filled rectangle.
 // It completely override pixels and do not manage transparency.
-pub fn draw_filled_rectangle(
-    zone: Zone,
-    color: ColorRGBA,
-    canvas: &mut [u8],
-    canvas_width: usize,
-) {
+pub fn draw_filled_rectangle(zone: Zone, color: ColorRGBA, canvas: &mut [u8], canvas_width: usize) {
     let (x, y, width, height) = (
         zone.position.x as usize,
         zone.position.y as usize,
@@ -18,7 +13,7 @@ pub fn draw_filled_rectangle(
     for j in y..y + height {
         // Compute start and end of each line
         let start = (canvas_width * j + x) * 4;
-        let end = start+(width * 4);
+        let end = start + (width * 4);
 
         // Fill the line
         canvas[start..end]
