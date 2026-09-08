@@ -20,10 +20,8 @@ const DOUBLE_CLICK_GAP_MS: u64 = 40;
 /// True if (x, y) is near a screen edge.
 fn is_near_output_edge(x: i32, y: i32, outputs: &[(i32, i32, i32, i32)], margin: i32) -> bool {
     for &(output_x, output_y, width, height) in outputs {
-        let inside = x >= output_x
-            && x < output_x + width
-            && y >= output_y
-            && y < output_y + height;
+        let inside =
+            x >= output_x && x < output_x + width && y >= output_y && y < output_y + height;
         if inside {
             let near_left = x - output_x <= margin;
             let near_right = (output_x + width) - x <= margin;
@@ -70,8 +68,8 @@ fn send_double_click(pointer: &VirtualPointer, conn: &Connection, button: ClickB
 
 /// Do the click chosen by the user: press, move if needed, release.
 pub fn execute_click(main_layer: &MainLayer, qh: &QueueHandle<MainLayer>, conn: &Connection) {
-    let no_selection = main_layer.selection.len() == 1
-        && main_layer.selection[0].selected_column.is_none();
+    let no_selection =
+        main_layer.selection.len() == 1 && main_layer.selection[0].selected_column.is_none();
 
     if no_selection {
         let Some(button) = main_layer.click_button else {
@@ -112,54 +110,55 @@ pub fn execute_click(main_layer: &MainLayer, qh: &QueueHandle<MainLayer>, conn: 
     for (index, selection) in main_layer.selection.iter().enumerate() {
         if let Some(output) = selection.output.clone()
             && let Some(info) = main_layer.output_info(&output)
-                && let (Some((pos_x, pos_y)), Some((width, height))) =
-                    (info.logical_position, info.logical_size)
-                {
-                    // Use this selection’s own screen size.
-                    let base_zone = match (selection.selected_column, selection.selected_line) {
-                        (Some(_), Some(_)) if selection.selected_division.is_some() => {
-                            Zone::from_selection(selection, width as u32, height as u32)
-                        }
-                        (Some(column), Some(line)) => {
-                            // No division selected : click the middle of the cell.
-                            Zone::from_column_line(column, line, width as u32, height as u32)
-                        }
-                        _ => continue,
-                    };
-                    let active_zone = if let Some(zone) = selection.zones.last() {
-                        *zone
-                    } else {
-                        base_zone
-                    };
-
-                    // Click the center of the active zone.
-                    let (local_x, local_y) = (
-                        active_zone.position.x + active_zone.size.width / 2,
-                        active_zone.position.y + active_zone.size.height / 2,
-                    );
-
-                    // Convert to global coordinates.
-                    let global_x = (pos_x + local_x as i32) as u32;
-                    let global_y = (pos_y + local_y as i32) as u32;
-
-                    log::debug!("Moving");
-                    stepped_absolute_move(
-                        conn,
-                        &pointer,
-                        previous_position,
-                        (global_x, global_y),
-                        extent,
-                        &output_rects,
-                    );
-                    previous_position = (global_x, global_y);
-
-                    if index == 0
-                        && let Some(button) = main_layer.click_button {
-                            log::debug!("Button held down");
-                            pointer.press(button);
-                            let _ = conn.flush();
-                        }
+            && let (Some((pos_x, pos_y)), Some((width, height))) =
+                (info.logical_position, info.logical_size)
+        {
+            // Use this selection’s own screen size.
+            let base_zone = match (selection.selected_column, selection.selected_line) {
+                (Some(_), Some(_)) if selection.selected_division.is_some() => {
+                    Zone::from_selection(selection, width as u32, height as u32)
                 }
+                (Some(column), Some(line)) => {
+                    // No division selected : click the middle of the cell.
+                    Zone::from_column_line(column, line, width as u32, height as u32)
+                }
+                _ => continue,
+            };
+            let active_zone = if let Some(zone) = selection.zones.last() {
+                *zone
+            } else {
+                base_zone
+            };
+
+            // Click the center of the active zone.
+            let (local_x, local_y) = (
+                active_zone.position.x + active_zone.size.width / 2,
+                active_zone.position.y + active_zone.size.height / 2,
+            );
+
+            // Convert to global coordinates.
+            let global_x = (pos_x + local_x as i32) as u32;
+            let global_y = (pos_y + local_y as i32) as u32;
+
+            log::debug!("Moving");
+            stepped_absolute_move(
+                conn,
+                &pointer,
+                previous_position,
+                (global_x, global_y),
+                extent,
+                &output_rects,
+            );
+            previous_position = (global_x, global_y);
+
+            if index == 0
+                && let Some(button) = main_layer.click_button
+            {
+                log::debug!("Button held down");
+                pointer.press(button);
+                let _ = conn.flush();
+            }
+        }
     }
 
     let Some(button) = main_layer.click_button else {

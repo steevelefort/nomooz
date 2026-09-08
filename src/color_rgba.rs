@@ -30,13 +30,13 @@ impl ColorRGBA {
     }
 
     pub fn from_hex_string(value: &str) -> Result<ColorRGBA, Box<dyn std::error::Error>> {
-        if value.starts_with("#") && value.len()==9 {
+        if value.starts_with("#") && value.len() == 9 {
             let value = &value[1..];
             let mut iter = value.as_bytes().chunks(2);
-            let r = u8::from_str_radix( from_utf8(iter.next().ok_or("Bad format")?)?, 16)?;
-            let g = u8::from_str_radix( from_utf8(iter.next().ok_or("Bad format")?)?, 16)?;
-            let b = u8::from_str_radix( from_utf8(iter.next().ok_or("Bad format")?)?, 16)?;
-            let a = u8::from_str_radix( from_utf8(iter.next().ok_or("Bad format")?)?, 16)?;
+            let r = u8::from_str_radix(from_utf8(iter.next().ok_or("Bad format")?)?, 16)?;
+            let g = u8::from_str_radix(from_utf8(iter.next().ok_or("Bad format")?)?, 16)?;
+            let b = u8::from_str_radix(from_utf8(iter.next().ok_or("Bad format")?)?, 16)?;
+            let a = u8::from_str_radix(from_utf8(iter.next().ok_or("Bad format")?)?, 16)?;
 
             Ok(ColorRGBA::new(r, g, b, a))
         } else {
@@ -50,7 +50,10 @@ impl ColorRGBA {
             return;
         }
         // Never panic here, even with a huge x or y.
-        let offset = canvas_width.saturating_mul(y).saturating_add(x).saturating_mul(4);
+        let offset = canvas_width
+            .saturating_mul(y)
+            .saturating_add(x)
+            .saturating_mul(4);
         if canvas.len() < 4 || offset > canvas.len() - 4 {
             return;
         }
@@ -65,7 +68,7 @@ impl ColorRGBA {
 
         let src_a = self.a as f32;
 
-        // Background part to keep 
+        // Background part to keep
         let inv_alpha = 1.0 - src_a / 255.0;
 
         // Set the color and add the remaining backgroud
@@ -91,7 +94,10 @@ impl ColorRGBA {
 
 impl From<ColorRGBA> for u32 {
     fn from(value: ColorRGBA) -> Self {
-        ((value.a as u32) << 24) + ((value.r as u32) << 16) + ((value.g as u32) << 8) + value.b as u32
+        ((value.a as u32) << 24)
+            + ((value.r as u32) << 16)
+            + ((value.g as u32) << 8)
+            + value.b as u32
     }
 }
 

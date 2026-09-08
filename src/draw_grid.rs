@@ -19,26 +19,16 @@ pub fn draw_grid(
     for i in 1..cells_count_x as usize {
         for j in y as usize..(y as usize + height as usize) {
             for k in 0..3usize {
-                color.print_on_canvas(
-                    x as usize + i * fact + k - 1,
-                    j,
-                    canvas,
-                    canvas_width,
-                );
+                color.print_on_canvas(x as usize + i * fact + k - 1, j, canvas, canvas_width);
             }
         }
     }
 
     let fact = (height / cells_count_y) as usize;
     for i in 1..cells_count_y as usize {
-        for j in x as usize..(x as usize+width as usize) {
+        for j in x as usize..(x as usize + width as usize) {
             for k in 0..3usize {
-                color.print_on_canvas(
-                    j,
-                    y as usize + i * fact + k - 1,
-                    canvas,
-                    canvas_width,
-                );
+                color.print_on_canvas(j, y as usize + i * fact + k - 1, canvas, canvas_width);
             }
         }
     }

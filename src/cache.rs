@@ -16,4 +16,3 @@ pub fn cache_data(filename: &str, data: String) -> Result<(), std::io::Error> {
 pub fn load_cache(filename: &str) -> Result<String, std::io::Error> {
     std::fs::read_to_string(cache_dir().join(filename))
 }
-

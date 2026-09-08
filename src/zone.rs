@@ -11,10 +11,26 @@ pub struct Zone {
 impl Zone {
     /// Split this zone in half.
     pub fn halved(&self) -> Option<Zone> {
-        let half_width = if self.size.width>1 { self.size.width / 2 } else { self.size.width };
-        let half_x = if self.size.width>1 { self.position.x + half_width / 2 } else { self.position.x };
-        let half_height = if self.size.height>1 { self.size.height / 2 } else { self.size.height };
-        let half_y = if self.size.height>1 { self.position.y + half_height / 2 } else { self.position.y };
+        let half_width = if self.size.width > 1 {
+            self.size.width / 2
+        } else {
+            self.size.width
+        };
+        let half_x = if self.size.width > 1 {
+            self.position.x + half_width / 2
+        } else {
+            self.position.x
+        };
+        let half_height = if self.size.height > 1 {
+            self.size.height / 2
+        } else {
+            self.size.height
+        };
+        let half_y = if self.size.height > 1 {
+            self.position.y + half_height / 2
+        } else {
+            self.position.y
+        };
 
         let new_zone = Zone {
             position: Coordinate {
@@ -51,7 +67,7 @@ impl Zone {
                 }
             }
             Direction::Right => {
-                if new_zone.size.width >=display_width - new_zone.position.x {
+                if new_zone.size.width >= display_width - new_zone.position.x {
                     new_zone.position.x = display_width - new_zone.size.width;
                 } else {
                     new_zone.position.x += new_zone.size.width;
@@ -80,7 +96,12 @@ impl Zone {
         }
     }
 
-    pub fn from_column_line(column: u32, line: u32, display_width: u32, display_height: u32) -> Self {
+    pub fn from_column_line(
+        column: u32,
+        line: u32,
+        display_width: u32,
+        display_height: u32,
+    ) -> Self {
         let cell_width = display_width / 10;
         let cell_height = display_height / 30;
         Self {

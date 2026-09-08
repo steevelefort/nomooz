@@ -15,7 +15,12 @@ impl Labels {
 
         // Main 30 alpha keys
         // let all_keys: Vec<u32> = (16..26).chain(30..40).chain(44..54).collect();
-        let all_keys: Vec<u32> = top_row.iter().chain(middle_row.iter()).chain(bottom_row.iter()).copied().collect();
+        let all_keys: Vec<u32> = top_row
+            .iter()
+            .chain(middle_row.iter())
+            .chain(bottom_row.iter())
+            .copied()
+            .collect();
 
         // Home row keys
         let hr_keys: Vec<u32> = (30..40).collect();
@@ -31,7 +36,8 @@ impl Labels {
                             "{}   {}",
                             xkb_parser.key_code_to_char(col),
                             xkb_parser.key_code_to_char(line)
-                        ).to_uppercase()
+                        )
+                        .to_uppercase()
                     })
                     .collect()
             })
@@ -46,17 +52,17 @@ impl Labels {
         // Subdivisions
         let divisions: Vec<Vec<String>> = [&top_row, &middle_row, &bottom_row]
             .into_iter()
-            .map(|line|{
-                line.iter().map(|&col|{
-                    xkb_parser.key_code_to_char(col).to_string().to_uppercase()
-                }).collect()
-            }).collect();
-
+            .map(|line| {
+                line.iter()
+                    .map(|&col| xkb_parser.key_code_to_char(col).to_string().to_uppercase())
+                    .collect()
+            })
+            .collect();
 
         Labels {
             all,
             column,
-            divisions
+            divisions,
         }
     }
 }

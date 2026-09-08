@@ -1,13 +1,21 @@
-use std::{num::NonZeroU32};
+use std::num::NonZeroU32;
 
 use smithay_client_toolkit::{
-    compositor::{CompositorHandler, CompositorState}, delegate_registry, output::{OutputHandler, OutputInfo, OutputState}, registry::{ProvidesRegistryState, RegistryState}, registry_handlers, seat::{
-        Capability, SeatHandler, SeatState,
-        keyboard::Modifiers,
-    }, shell::{
+    compositor::{CompositorHandler, CompositorState},
+    delegate_registry,
+    output::{OutputHandler, OutputInfo, OutputState},
+    reexports::calloop::LoopHandle,
+    registry::{ProvidesRegistryState, RegistryState},
+    registry_handlers,
+    seat::{Capability, SeatHandler, SeatState, keyboard::Modifiers},
+    shell::{
         WaylandSurface,
-        wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
-    }, shm::{
+        wlr_layer::{
+            Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface,
+            LayerSurfaceConfigure,
+        },
+    },
+    shm::{
         Shm, ShmHandler,
         slot::{Buffer, SlotPool},
     },
@@ -19,7 +27,17 @@ use wayland_client::{
 };
 
 use crate::{
-    behavior::Behavior, bindings::Bindings, dependencies::Dependencies, labels::Labels, selection::Selection, text_renderer::TextRenderer, theme::Theme, virtual_pointer::{ClickButton, VirtualPointer, VirtualPointerManager}, wayland_resources::WaylandResources, xkb_parser::XkbParser,
+    behavior::Behavior,
+    bindings::Bindings,
+    dependencies::Dependencies,
+    labels::Labels,
+    selection::Selection,
+    text_renderer::TextRenderer,
+    theme::Theme,
+    virtual_pointer::{ClickButton, VirtualPointer, VirtualPointerManager},
+    wayland_resources::WaylandResources,
+    xkb_parser::XkbParser,
+    zone::Zone,
 };
 
 /// Max delay between two clicks for a double click.
@@ -29,6 +47,7 @@ pub struct MainLayer {
     registry_state: RegistryState,
     seat_state: SeatState,
     output_state: OutputState,
+    loop_handle: LoopHandle<'static, MainLayer>,
     compositor: CompositorState,
     layer_shell: LayerShell,
     shm: Shm,
@@ -45,7 +64,7 @@ pub struct MainLayer {
     pub modifiers: Modifiers,
     pub buffer: Option<Buffer>,
     pub click_button: Option<ClickButton>, // Button used for the click.
-    pub double_click: bool, // True if this is a double click.
+    pub double_click: bool,                // True if this is a double click.
     pub pending_click: Option<(ClickButton, u32)>, // A click waiting for maybe a second one.
     pub theme: Theme,
     pub bindings: Bindings,
@@ -64,6 +83,7 @@ impl MainLayer {
         qh: &QueueHandle<Self>,
         wayland_resources: WaylandResources,
         dependencies: Dependencies,
+        loop_handle: LoopHandle<'static, MainLayer>,
     ) -> Self {
         let WaylandResources {
             compositor,
@@ -86,6 +106,7 @@ impl MainLayer {
             registry_state: RegistryState::new(globals),
             seat_state: SeatState::new(globals, qh),
             output_state: OutputState::new(globals, qh),
+            loop_handle,
             compositor,
             layer_shell,
             shm,
@@ -118,7 +139,7 @@ impl MainLayer {
             current_output: None,
             theme,
             bindings,
-            behavior
+            behavior,
         }
     }
 
@@ -145,14 +166,15 @@ impl MainLayer {
         let mut total_height = 0;
         for (_, info) in self.outputs() {
             if let Some((x, y)) = info.logical_position
-                && let Some((width, height)) = info.logical_size {
-                    if x + width > total_width {
-                        total_width = x + width;
-                    }
-                    if y + height > total_height {
-                        total_height = y + height;
-                    }
+                && let Some((width, height)) = info.logical_size
+            {
+                if x + width > total_width {
+                    total_width = x + width;
                 }
+                if y + height > total_height {
+                    total_height = y + height;
+                }
+            }
         }
         (total_width, total_height)
     }
@@ -190,18 +212,58 @@ impl MainLayer {
         // Move the pointer to the center of the new screen.
         if let Some(info) = self.output_info(output)
             && let Some((width, height)) = info.logical_size
-                && let Some((pos_x, pos_y)) = info.logical_position {
-                    let (total_width, total_height) = self.total_layout_size();
-                    let global_x = pos_x + width / 2;
-                    let global_y = pos_y + height / 2;
-                    let pointer = self.create_pointer(qh);
-                    pointer.move_absolute(
-                        global_x as u32,
-                        global_y as u32,
-                        total_width as u32,
-                        total_height as u32,
-                    );
+            && let Some((pos_x, pos_y)) = info.logical_position
+        {
+            let (total_width, total_height) = self.total_layout_size();
+            let global_x = pos_x + width / 2;
+            let global_y = pos_y + height / 2;
+            let pointer = self.create_pointer(qh);
+            pointer.move_absolute(
+                global_x as u32,
+                global_y as u32,
+                total_width as u32,
+                total_height as u32,
+            );
+        }
+    }
+
+    /// Move the pointer to the center of the current selection’s active zone.
+    pub fn move_pointer_to_active_zone(&self, qh: &QueueHandle<Self>) {
+        let selection = &self.selection[self.current_selection_index];
+        if let Some(output) = selection.output.clone()
+            && let Some(info) = self.output_info(&output)
+            && let Some((pos_x, pos_y)) = info.logical_position
+            && let Some((width, height)) = info.logical_size
+        {
+            let base_zone = match (selection.selected_column, selection.selected_line) {
+                (Some(_), Some(_)) if selection.selected_division.is_some() => {
+                    Zone::from_selection(selection, width as u32, height as u32)
                 }
+                (Some(column), Some(line)) => {
+                    Zone::from_column_line(column, line, width as u32, height as u32)
+                }
+                _ => return,
+            };
+            let active_zone = if let Some(zone) = selection.zones.last() {
+                *zone
+            } else {
+                base_zone
+            };
+
+            let global_x =
+                pos_x + active_zone.position.x as i32 + (active_zone.size.width / 2) as i32;
+            let global_y =
+                pos_y + active_zone.position.y as i32 + (active_zone.size.height / 2) as i32;
+
+            let (total_width, total_height) = self.total_layout_size();
+            let pointer = self.create_pointer(qh);
+            pointer.move_absolute(
+                global_x as u32,
+                global_y as u32,
+                total_width as u32,
+                total_height as u32,
+            );
+        }
     }
 }
 
@@ -235,12 +297,13 @@ impl CompositorHandler for MainLayer {
     ) {
         // If no second click comes fast enough, click once.
         if let Some((button, pending_time)) = self.pending_click
-            && time.saturating_sub(pending_time) > DOUBLE_CLICK_WINDOW_MS {
-                self.click_button = Some(button);
-                self.double_click = false;
-                self.pending_click = None;
-                self.exit = true;
-            }
+            && time.saturating_sub(pending_time) > DOUBLE_CLICK_WINDOW_MS
+        {
+            self.click_button = Some(button);
+            self.double_click = false;
+            self.pending_click = None;
+            self.exit = true;
+        }
 
         // Don’t draw before the first configure, or it crashes.
         if !self.first_configure {
@@ -279,11 +342,29 @@ impl OutputHandler for MainLayer {
     }
 
     // Required by the trait, unused here.
-    fn new_output( &mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput,) { }
+    fn new_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
 
-    fn update_output( &mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput,) { }
+    fn update_output(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
 
-    fn output_destroyed( &mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _output: wl_output::WlOutput,) { }
+    fn output_destroyed(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _output: wl_output::WlOutput,
+    ) {
+    }
 }
 
 impl LayerShellHandler for MainLayer {
@@ -327,9 +408,19 @@ impl SeatHandler for MainLayer {
     ) {
         if capability == Capability::Keyboard && self.keyboard.is_none() {
             log::debug!("Set keyboard capability");
+            let loop_handle = self.loop_handle.clone();
+            let qh_for_repeat = qh.clone();
             let keyboard = self
                 .seat_state
-                .get_keyboard(qh, &seat, None)
+                .get_keyboard_with_repeat(
+                    qh,
+                    &seat,
+                    None,
+                    loop_handle,
+                    Box::new(move |state, _keyboard, event| {
+                        state.handle_key_repeat(&qh_for_repeat, event);
+                    }),
+                )
                 .expect("Failed to create keyboard");
             self.keyboard = Some(keyboard);
         }
@@ -357,7 +448,6 @@ impl ShmHandler for MainLayer {
         &mut self.shm
     }
 }
-
 
 delegate_registry!(MainLayer);
 

@@ -1,6 +1,10 @@
 use crate::{
-    draw_geometry::draw_filled_rectangle, geometry::{Coordinate, Size}, labels::Labels,
-    main_layer::MainLayer, text_renderer::TextStyle, zone::Zone,
+    draw_geometry::draw_filled_rectangle,
+    geometry::{Coordinate, Size},
+    labels::Labels,
+    main_layer::MainLayer,
+    text_renderer::TextStyle,
+    zone::Zone,
 };
 
 use smithay_client_toolkit::{
@@ -36,6 +40,11 @@ impl MainLayer {
     pub fn hide(&mut self) {
         self.layer.wl_surface().attach(None, 0, 0);
         self.layer.wl_surface().commit();
+    }
+
+    pub fn show(&mut self, qh: &QueueHandle<Self>) {
+        self.need_redraw = true;
+        self.draw(qh);
     }
 
     pub fn draw(&mut self, qh: &QueueHandle<Self>) {
@@ -142,12 +151,7 @@ impl MainLayer {
                     (active_zone, 1, 1, &empty, 0.0) // No label here
                 }
             };
-            draw_filled_rectangle(
-                zone,
-                self.theme.grid_cells_color,
-                canvas,
-                width as usize,
-            );
+            draw_filled_rectangle(zone, self.theme.grid_cells_color, canvas, width as usize);
 
             draw_grid(
                 zone,
@@ -171,12 +175,12 @@ impl MainLayer {
                 width as usize,
             );
 
-
             // Draw the center of a selection
             let selection = &self.selection[self.current_selection_index];
-            if let Some(column) = selection.selected_column &&
-                let Some(line) = selection.selected_line &&
-                    selection.selected_division.is_none() {
+            if let Some(column) = selection.selected_column
+                && let Some(line) = selection.selected_line
+                && selection.selected_division.is_none()
+            {
                 let cell_width = self.width / 10;
                 let cell_height = self.height / 30;
                 let center_x = column * cell_width + cell_width / 2;
@@ -188,14 +192,16 @@ impl MainLayer {
                             x: center_x - 3,
                             y: center_y - 3,
                         },
-                        size: Size { width: 5, height: 5 },
+                        size: Size {
+                            width: 5,
+                            height: 5,
+                        },
                     },
                     self.theme.text_color,
                     canvas,
                     width as usize,
                 );
             }
-
 
             self.buffer
                 .as_ref()

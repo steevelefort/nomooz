@@ -33,7 +33,10 @@ impl ClickButton {
 }
 
 fn now_millis() -> u32 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u32
 }
 
 pub struct VirtualPointerManager {
@@ -77,20 +80,28 @@ pub struct VirtualPointer {
 }
 
 impl VirtualPointer {
-
     /// x and y go from 0 to the extent.
     pub fn move_absolute(&self, x: u32, y: u32, x_extent: u32, y_extent: u32) {
-        self.pointer.motion_absolute(now_millis(), x, y, x_extent, y_extent);
+        self.pointer
+            .motion_absolute(now_millis(), x, y, x_extent, y_extent);
         self.pointer.frame();
     }
 
     pub fn press(&self, button: ClickButton) {
-        self.pointer.button(now_millis(), button.code(), wl_pointer::ButtonState::Pressed);
+        self.pointer.button(
+            now_millis(),
+            button.code(),
+            wl_pointer::ButtonState::Pressed,
+        );
         self.pointer.frame();
     }
 
     pub fn release(&self, button: ClickButton) {
-        self.pointer.button(now_millis(), button.code(), wl_pointer::ButtonState::Released);
+        self.pointer.button(
+            now_millis(),
+            button.code(),
+            wl_pointer::ButtonState::Released,
+        );
         self.pointer.frame();
     }
 }
